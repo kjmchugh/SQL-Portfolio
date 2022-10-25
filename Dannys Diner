@@ -1,0 +1,355 @@
+Danny’s Diner SQL Challenge
+
+--- Introduction
+## Danny seriously loves Japanese food so in the beginning of 2021, he decides to embark upon a risky venture and opens up a cute little restaurant that sells his 3 favorite foods: sushi, curry and ramen.
+Danny’s Diner is in need of your assistance to help the restaurant stay afloat - the restaurant has captured some very basic data from their few months of operation but have no idea how to use their data to help them run the business.
+# Problem Statement
+## Danny wants to use the data to answer a few simple questions about his customers, especially about their visiting patterns, how much money they’ve spent and also which menu items are their favorite. Having this deeper connection with his customers will help him deliver a better and more personalized experience for his loyal customers.
+He plans on using these insights to help him decide whether he should expand the existing customer loyalty program - additionally he needs help to generate some basic datasets so his team can easily inspect the data without needing to use SQL.
+Danny has provided you with a sample of his overall customer data due to privacy issues - but he hopes that these examples are enough for you to write fully functioning SQL queries to help him answer his questions!
+Danny has shared with you 3 key datasets for this case study:
+sales
+menu
+Members
+ 
+ 
+**Schema (PostgreSQL v13)**
+ 
+    CREATE SCHEMA dannys_diner;
+    SET search_path = dannys_diner;
+    
+    CREATE TABLE sales (
+      "customer_id" VARCHAR(1),
+      "order_date" DATE,
+      "product_id" INTEGER
+    );
+    
+    INSERT INTO sales
+      ("customer_id", "order_date", "product_id")
+    VALUES
+      ('A', '2021-01-01', '1'),
+      ('A', '2021-01-01', '2'),
+      ('A', '2021-01-07', '2'),
+      ('A', '2021-01-10', '3'),
+      ('A', '2021-01-11', '3'),
+      ('A', '2021-01-11', '3'),
+      ('B', '2021-01-01', '2'),
+      ('B', '2021-01-02', '2'),
+      ('B', '2021-01-04', '1'),
+      ('B', '2021-01-11', '1'),
+      ('B', '2021-01-16', '3'),
+      ('B', '2021-02-01', '3'),
+      ('C', '2021-01-01', '3'),
+      ('C', '2021-01-01', '3'),
+      ('C', '2021-01-07', '3');
+     
+    
+    CREATE TABLE menu (
+      "product_id" INTEGER,
+      "product_name" VARCHAR(5),
+      "price" INTEGER
+    );
+    
+    INSERT INTO menu
+      ("product_id", "product_name", "price")
+    VALUES
+      ('1', 'sushi', '10'),
+      ('2', 'curry', '15'),
+      ('3', 'ramen', '12');
+    
+    CREATE TABLE members (
+      "customer_id" VARCHAR(1),
+      "join_date" DATE
+    );
+    
+    INSERT INTO members
+      ("customer_id", "join_date")
+    VALUES
+      ('A', '2021-01-07'),
+      ('B', '2021-01-09');
+[View on DB Fiddle](https://www.db-fiddle.com/f/2rM8RAnq7h5LLDTzZiRWcd/138)
+# Case Study Questions
+## Each of the following case study questions can be answered using a single SQL statement:
+
+### What is the total amount each customer spent at the restaurant?
+
+**Query #1**
+
+    SELECT
+      	sales.customer_id, SUM(menu.price)
+    FROM dannys_diner.menu
+    FULL JOIN dannys_diner.sales ON sales.product_id = menu.product_id
+    GROUP BY customer_id
+    ORDER BY customer_id;
+| customer_id | sum |
+| A           | 76  |
+| B           | 74  |
+| C           | 36  |
+[View on DB Fiddle](https://www.db-fiddle.com/f/2rM8RAnq7h5LLDTzZiRWcd/138)
+
+### How many days has each customer visited the restaurant?
+
+**Query #2**
+ 
+    SELECT customer_id, COUNT(DISTINCT(order_date)) AS days_visit
+    FROM dannys_diner.sales
+    GROUP BY customer_id;
+ 
+| customer_id | days_visit |
+| ----------- | ---------- |
+| A           | 4          |
+| B           | 6          |
+| C           | 2          |
+[View on DB Fiddle](https://www.db-fiddle.com/f/2rM8RAnq7h5LLDTzZiRWcd/138)
+
+### What was the first item from the menu purchased by each customer?	
+
+WITH first_sales as
+(SELECT sales.customer_id, sales.order_date, menu.product_name,
+ DENSE_RANK() OVER (PARTITION BY sales.customer_id ORDER BY sales.order_date) as rank
+FROM dannys_diner.menu
+JOIN dannys_diner.sales  ON menu.product_id = sales.product_id
+GROUP BY sales.customer_id, menu.product_name, sales.order_date)
+SELECT customer_id, product_name
+FROM first_sales
+Where rank = 1;
+
+
+Query #3 Execution time: 4ms
+customer_id
+product_name
+A
+curry
+A
+sushi
+B
+curry
+C
+ramen
+
+ 
+### What is the most purchased item on the menu and how many times was it purchased by all customers?
+**Query #4**
+   SELECT menu.product_name, COUNT(sales.product_id)
+    FROM dannys_diner.menu
+    JOIN dannys_diner.sales  ON menu.product_id = sales.product_id
+    GROUP BY menu.product_name
+    ORDER BY COUNT(sales.product_id) DESC
+    LIMIT 1;
+product_name
+count
+ramen
+8
+
+ 
+### Which item was the most popular for each customer?
+**Query #5**
+
+    With Rank as 
+    (SELECT sales.customer_id, menu.product_name, COUNT(sales.product_id) as cust_order, 
+     Dense_rank() OVER (partition by sales.customer_id order by COUNT(sales.product_id) DESC) as Rank
+    FROM dannys_diner.menu
+    JOIN dannys_diner.sales  ON menu.product_id = sales.product_id
+    GROUP BY sales.customer_id, sales.product_id,menu.product_name)
+    SELECT customer_id, product_name, cust_order
+    FROM rank
+    WHERE rank = 1;
+customer_id
+product_name
+cust_order
+
+| A   | B     | B     | B      |C      |  
+ramen | ramen | sushi | curry  | ramen |
+3     | 2     | 2     | 2      | 3     |
+
+ 
+### Which item was purchased first by the customer after they became a member? 
+**Query #5**
+
+    WITH Rank as
+    (SELECT s.customer_id, m.product_name,
+     DENSE_RANK() OVER (PARTITION BY s.customer_id ORDER BY s.order_date) as Rank
+    FROM dannys_diner.Sales S
+    JOIN dannys_diner.menu M ON m.product_id = s.product_id
+    JOIN dannys_diner.members Mem ON mem.customer_id = s.customer_id
+    WHERE s.order_date >= mem.join_date)
+    SELECT *
+    FROM Rank
+    WHERE rank = 1;
+ 
+customer_id
+product_name
+rank
+A
+curry
+1
+B
+sushi
+1
+
+ 
+### Which item was purchased just before the customer became a member?
+**Query #7**
+
+    WITH Rank as
+    (SELECT s.customer_id, m.product_name,
+     DENSE_RANK() OVER (PARTITION BY s.customer_id ORDER BY s.order_date) as Rank
+    FROM dannys_diner.Sales S
+    JOIN dannys_diner.menu M ON m.product_id = s.product_id
+    JOIN dannys_diner.members Mem ON mem.customer_id = s.customer_id
+    WHERE s.order_date < mem.join_date)
+    SELECT *
+    FROM Rank
+    WHERE rank = 1;
+ 
+customer_id
+product_name
+rank
+A
+sushi
+1
+A
+curry
+1
+B
+curry
+1
+ 
+ 
+
+### What is the total items and amount spent for each member before they became a member?
+**Query #8**
+
+    SELECT s.customer_id, COUNT(DISTINCT s.product_id) AS menu_item, SUM(m.price) AS total_sales
+    FROM dannys_diner.Sales S
+    JOIN dannys_diner.menu M ON m.product_id = s.product_id
+    JOIN dannys_diner.members Mem ON mem.customer_id = s.customer_id
+    WHERE s.order_date < mem.join_date
+    GROUP BY s.customer_id;
+ 
+customer_id
+menu_item
+total_sales
+A
+2
+25
+B
+2
+40
+ 
+ 
+### If each $1 spent equates to 10 points and sushi has a 2x points multiplier - how many points would each customer have?
+**Query #9**
+
+    WITH Points AS
+    (SELECT*, 
+     CASE When product_id = 1 THEN price*20
+     ELSE price*10
+     END as points
+    FROM dannys_diner.menu)
+    Select s.customer_id, SUM(P.points) as Points
+    FROM dannys_diner.sales s
+    JOIN Points p ON p.product_id = s.product_id
+    GROUP BY s.customer_id;
+ 
+customer_id
+points
+B
+940
+C
+360
+A
+860
+
+ 
+### In the first week after a customer joins the program (including their join date) they earn 2x points on all items, not just sushi - how many points do customer A and B have at the end of January?
+**Query #10**
+
+    WITH new_member AS
+        (SELECT s.customer_id, s.order_date, mem.join_date, DATE(mem.join_date + INTERVAL '6 days') AS end_promo, s.product_id, m.price,  
+         CASE WHEN s.product_id = 1 THEN m.price*20
+           WHEN
+            (s.order_date BETWEEN mem.join_date AND DATE(mem.join_date + INTERVAL '6 days')) THEN m.price*20
+         ELSE m.price*10
+         END as points
+        FROM dannys_diner.sales s
+        JOIN dannys_diner.menu m ON m.product_id = s.product_id
+        JOIN dannys_diner.members mem ON s.customer_id = mem.customer_id
+            WHERE s.order_date <= '2021-1-31')
+        Select customer_id, SUM(Points) as TOTAL from new_member
+        GROUP BY customer_id;
+ 
+customer_id
+total
+A
+1370
+B
+820
+ 
+ 
+ 
+# BONUS:
+## Join all the things
+ 
+**Query BONUS #1**
+ 
+    SELECT s.customer_id, s.order_date, m.product_name, m.price,  
+     CASE
+     When 
+     	s.order_date < mem.join_date THEN 'N'
+        WHEN s.order_date >= mem.join_date THEN 'Y'
+        ELSE 'N'
+        END AS Member
+        FROM dannys_diner.sales s
+        JOIN dannys_diner.menu m ON m.product_id = s.product_id
+        LEFT JOIN dannys_diner.members mem ON s.customer_id = mem.customer_id
+       ORDER BY s.customer_id, s.order_date;
+ 
+ 
+**Query BONUS #2**
+ 
+    WITH summary_table AS 
+     (SELECT s.customer_id, s.order_date, m.product_name, m.price,  
+     CASE
+     When 
+     	s.order_date < mem.join_date THEN 'N'
+        WHEN s.order_date >= mem.join_date THEN 'Y'
+        ELSE 'N'
+        END AS Member
+        FROM dannys_diner.sales s
+        JOIN dannys_diner.menu m ON m.product_id = s.product_id
+        LEFT JOIN dannys_diner.members mem ON s.customer_id = mem.customer_id
+       ORDER BY s.customer_id, s.order_date)
+       SELECT *, CASE 
+       WHEN member = 'N' then NULL
+       ELSE RANK () OVER (partition by customer_id, member
+                         order by order_date) END AS ranking
+                        FROM summary_table;
+ 
+| customer_id | order_date | product_name | price | member | ranking |
+| A           | 2021-01-01T00:00:00.000Z | sushi        | 10    | N      |         |
+| A           | 2021-01-01T00:00:00.000Z | curry        | 15    | N      |         |
+| A           | 2021-01-07T00:00:00.000Z | curry        | 15    | Y      | 1       |
+| A           | 2021-01-10T00:00:00.000Z | ramen        | 12    | Y      | 2       |
+| A           | 2021-01-11T00:00:00.000Z | ramen        | 12    | Y      | 3       |
+| A           | 2021-01-11T00:00:00.000Z | ramen        | 12    | Y      | 3       |
+| B           | 2021-01-01T00:00:00.000Z | curry        | 15    | N      |         |
+| B           | 2021-01-02T00:00:00.000Z | curry        | 15    | N      |         |
+| B           | 2021-01-04T00:00:00.000Z | sushi        | 10    | N      |         |
+| B           | 2021-01-11T00:00:00.000Z | sushi        | 10    | Y      | 1       |
+| B           | 2021-01-16T00:00:00.000Z | ramen        | 12    | Y      | 2       |
+| B           | 2021-02-01T00:00:00.000Z | ramen        | 12    | Y      | 3       |
+| C           | 2021-01-01T00:00:00.000Z | ramen        | 12    | N      |         |
+| C           | 2021-01-01T00:00:00.000Z | ramen        | 12    | N      |         |
+| C           | 2021-01-07T00:00:00.000Z | ramen        | 12    | N      |         |
+ 
+ 
+ 
+ 
+ 
+ 
+
+      
+
+
+
